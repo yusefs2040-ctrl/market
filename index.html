@@ -176,6 +176,14 @@
   }
   .weight-preview .big-total{font-size:26px;font-weight:800;color:var(--primary-dark);}
 
+  .camera-wrap{position:relative;border-radius:12px;overflow:hidden;background:#000;}
+  .camera-wrap video{width:100%;display:block;max-height:340px;object-fit:cover;}
+  .camera-frame{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:78%;height:34%;border:3px solid var(--accent);border-radius:10px;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.35);pointer-events:none;
+  }
+
   .margin-box{display:flex;gap:10px;align-items:flex-end;}
   .hint{font-size:12px;color:var(--muted);margin-top:4px;}
 
@@ -281,6 +289,7 @@
     <nav>
       <button class="navBtn active" data-tab="pos">🧾 نقطة البيع</button>
       <button class="navBtn" data-tab="inventory">📦 المخزون</button>
+      <button class="navBtn" data-tab="receiving">📥 استلام بضاعة</button>
       <button class="navBtn" data-tab="reports">📊 التقارير</button>
       <button class="navBtn" data-tab="settings">⚙️ الإعدادات</button>
       <button class="navBtn" data-tab="users">👤 المستخدمين</button>
@@ -300,6 +309,7 @@
           <form id="scanForm" class="scan-box">
             <input type="text" id="scanInput" autocomplete="off" placeholder="امسح الباركود هنا... (السكانر بيدخل ويعمل Enter تلقائي)">
             <button type="submit" class="btn btn-primary">إضافة</button>
+            <button type="button" class="btn btn-outline" id="cameraScanBtn" title="مسح بالكاميرا">📷</button>
           </form>
 
           <div class="toolbar">
@@ -312,6 +322,8 @@
         <div class="cart-panel card">
           <h2>الفاتورة الحالية</h2>
           <div id="cartList" class="cart-list"></div>
+          <div class="receipt-line" style="padding:4px 0;"><span class="muted">الإجمالي الفرعي</span><span id="cartSubtotal" class="num muted">0.00</span></div>
+          <div class="receipt-line" id="invoiceDiscountRow" style="padding:6px 0;align-items:center;"></div>
           <div class="cart-total-row"><span>الإجمالي</span><span id="cartTotal" class="num">0.00</span></div>
           <div class="row" style="margin-top:10px;">
             <button class="btn btn-outline" style="flex:1" id="clearCartBtn">إلغاء الفاتورة</button>
@@ -330,6 +342,8 @@
               </div>
             </div>
           </div>
+
+          <div class="card" style="margin-top:12px;padding:14px;" id="shiftBox"></div>
         </div>
       </div>
     </section>
@@ -389,6 +403,39 @@
       </div>
     </section>
 
+    <!-- ================= RECEIVING TAB ================= -->
+    <section id="tab-receiving" class="tab">
+      <h1>استلام بضاعة</h1>
+      <p class="sub">سجّل كل توريدة جديدة تجيلك، والمخزون يتحدث تلقائي</p>
+
+      <div class="toolbar">
+        <span class="muted" id="receiptsCount"></span>
+        <button class="btn btn-primary" id="newReceiptBtn">+ استلام بضاعة جديدة</button>
+      </div>
+
+      <div class="card" style="padding:0;overflow:auto;">
+        <table id="receiptsTable">
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>المورد</th>
+              <th>عدد الأصناف</th>
+              <th>إجمالي التكلفة</th>
+              <th>استلمها</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="receiptsTbody"></tbody>
+        </table>
+        <div id="receiptsEmptyState" class="empty-state" style="display:none;">
+          <div class="big">📥</div>
+          <div><strong>لسه مفيش عمليات استلام مسجلة</strong></div>
+          <p class="sub">أول ما توريدة تيجيلك، سجّلها هنا عشان المخزون يتزود تلقائي</p>
+          <button class="btn btn-primary" id="newReceiptBtnEmpty">+ استلام بضاعة جديدة</button>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= REPORTS TAB ================= -->
     <section id="tab-reports" class="tab">
       <h1>التقارير</h1>
@@ -413,7 +460,11 @@
           <div class="stat-value num" id="repCost">0.00</div>
         </div>
         <div class="stat-card card">
-          <div class="stat-label">صافي الربح</div>
+          <div class="stat-label">إجمالي المرتجعات</div>
+          <div class="stat-value num" style="color:var(--danger);" id="repReturns">0.00</div>
+        </div>
+        <div class="stat-card card">
+          <div class="stat-label">صافي الربح (بعد المرتجعات)</div>
           <div class="stat-value accent num" id="repProfit">0.00</div>
         </div>
         <div class="stat-card card">
@@ -443,6 +494,37 @@
           <table><tbody id="cashierTbody"></tbody></table>
           <div id="cashierEmpty" class="empty-state" style="display:none;padding:20px;"><span class="muted">لا توجد مبيعات في هذه الفترة</span></div>
         </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="toolbar" style="margin-bottom:10px;">
+          <h2 style="margin:0;">سجل الفواتير</h2>
+          <input type="text" id="invoiceSearch" class="search-box" placeholder="بحث برقم الفاتورة أو اسم الكاشير...">
+        </div>
+        <p class="hint" style="margin-bottom:10px;">اختار الفترة من الأزرار فوق (اليوم / الأسبوع / الشهر / الكل) عشان تلاقي فاتورة قديمة، وتقدر تطبعها تاني من هنا.</p>
+        <table>
+          <thead><tr><th>التاريخ</th><th>الكاشير</th><th>عدد الأصناف</th><th>الإجمالي</th><th>إجراءات</th></tr></thead>
+          <tbody id="invoicesTbody"></tbody>
+        </table>
+        <div id="invoicesEmpty" class="empty-state" style="display:none;padding:20px;"><span class="muted">لا توجد فواتير في هذه الفترة</span></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h2>سجل المرتجعات</h2>
+        <table>
+          <thead><tr><th>التاريخ</th><th>مرتبط بفاتورة</th><th>الأصناف</th><th>المبلغ المسترجع</th><th>بواسطة</th><th>السبب</th></tr></thead>
+          <tbody id="returnsTbody"></tbody>
+        </table>
+        <div id="returnsEmpty" class="empty-state" style="display:none;padding:20px;"><span class="muted">لا توجد مرتجعات في هذه الفترة</span></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;" id="shiftsLogCard">
+        <h2>سجل الشيفتات (تقفيل الدرج)</h2>
+        <table>
+          <thead><tr><th>الكاشير</th><th>بداية</th><th>نهاية</th><th>الافتتاحي</th><th>المتوقع</th><th>المعدود</th><th>الفرق</th></tr></thead>
+          <tbody id="shiftsTbody"></tbody>
+        </table>
+        <div id="shiftsEmpty" class="empty-state" style="display:none;padding:20px;"><span class="muted">لا توجد شيفتات مقفولة في هذه الفترة</span></div>
       </div>
 
       <div class="card" style="margin-top:16px;" id="activityLogCard">
@@ -597,9 +679,16 @@ const storage = {
 let products = [];   // {id,name,type,barcode,pluCode,purchasePrice,sellPrice,stock,unitLabel,minStock}
 let sales = [];       // {id,date,items:[{productId,name,unitLabel,price,qty,total,type}],total,cost,profit,cashierId,cashierName}
 let settings = {shopName:"سوبر ماركت", currency:"ج.م", lowStock:5, useScaleBarcode:false, scalePrefix:"20"};
-let cart = [];         // {productId,name,unitLabel,price,qty,total,type,purchasePrice}
+let cart = [];         // {productId,name,unitLabel,price,qty,total,type,purchasePrice,discount:{type,value}|null}
+let cartDiscount = null; // {type:'percent'|'fixed', value:number} applied to whole invoice
 let currentRange = "today";
 let dataReady = false;
+
+// ---- returns (مرتجعات) ----
+let returns = []; // {id,date,saleId,items:[{productId,name,qty,unitLabel,price,total,cost}],totalRefund,totalCost,userId,userName,reason}
+
+// ---- shifts / cash drawer (تقفيل الشيفت) ----
+let shifts = []; // {id,userId,userName,openedAt,openingCash,closedAt,closingCash,expectedCash,difference,status:'open'|'closed'}
 
 // ---- users & permissions ----
 let users = []; // {id,name,username,pin,role,permissions:{pos,inventory,reports,settings,users},active}
@@ -609,6 +698,7 @@ let pinTargetUser = null;
 const PERMISSION_DEFS = [
   {key:'pos', label:'نقطة البيع'},
   {key:'inventory', label:'المخزون'},
+  {key:'receiving', label:'استلام بضاعة'},
   {key:'reports', label:'التقارير'},
   {key:'settings', label:'الإعدادات'},
   {key:'users', label:'إدارة المستخدمين'}
@@ -637,6 +727,21 @@ async function logActivity(product, changes){
   // keep the log from growing forever
   if(activityLog.length > 500) activityLog = activityLog.slice(-500);
   await saveActivityLog();
+}
+
+// ---- goods receiving (استلام بضاعة) ----
+let receipts = []; // {id,date,supplierName,notes,items:[{productId,name,qty,unitCost,total}],totalCost,receivedById,receivedByName}
+async function saveReceipts(){
+  try{ await storage.set('receipts', JSON.stringify(receipts), true); }
+  catch(e){ showToast('تعذر حفظ سجل الاستلام', 'error'); }
+}
+async function saveReturns(){
+  try{ await storage.set('returns', JSON.stringify(returns), true); }
+  catch(e){ showToast('تعذر حفظ سجل المرتجعات', 'error'); }
+}
+async function saveShifts(){
+  try{ await storage.set('shifts', JSON.stringify(shifts), true); }
+  catch(e){ showToast('تعذر حفظ سجل الشيفتات', 'error'); }
 }
 
 async function getOrDefault(key, def){
@@ -670,10 +775,13 @@ async function loadAll(){
   settings = await getOrDefault('settings', settings);
   users = await getOrDefault('users', []);
   activityLog = await getOrDefault('activityLog', []);
+  receipts = await getOrDefault('receipts', []);
+  returns = await getOrDefault('returns', []);
+  shifts = await getOrDefault('shifts', []);
   if(users.length===0){
     users.push({
       id: genId('u'), name:'المدير', username:'admin', pin:'1234', role:'admin',
-      permissions:{pos:true, inventory:true, reports:true, settings:true, users:true}, active:true
+      permissions:{pos:true, inventory:true, receiving:true, reports:true, settings:true, users:true}, active:true
     });
     await saveUsers();
   }
@@ -844,6 +952,7 @@ function switchTab(tabName){
   document.getElementById('tab-'+tabName).classList.add('active');
   if(tabName==='pos'){ renderPOS(); focusScan(); }
   if(tabName==='inventory'){ renderInventory(); }
+  if(tabName==='receiving'){ renderReceivingTab(); }
   if(tabName==='reports'){ renderReports(); }
   if(tabName==='settings'){ renderSettingsForm(); }
   if(tabName==='users'){ renderUsersTab(); }
@@ -880,6 +989,7 @@ function openModal(html){
   document.getElementById('modalOverlay').classList.remove('hidden');
 }
 function closeModal(){
+  if(typeof stopCameraScan === 'function') stopCameraScan();
   document.getElementById('modalOverlay').classList.add('hidden');
   document.getElementById('modalContent').innerHTML = '';
   if(document.getElementById('tab-pos').classList.contains('active')) focusScan();
@@ -949,6 +1059,10 @@ function openProductForm(productId){
       <div class="field">
         <label>حد التنبيه (مخزون منخفض)</label>
         <input type="number" id="pfMinStock" min="0" step="0.001" value="${p?p.minStock:settings.lowStock}">
+      </div>
+      <div class="field">
+        <label>كمية إعادة الطلب المقترحة</label>
+        <input type="number" id="pfReorderQty" min="0" step="0.001" value="${p&&p.reorderQty?p.reorderQty:''}" placeholder="اختياري">
       </div>
     </div>
     <div class="field">
@@ -1021,6 +1135,7 @@ function openProductForm(productId){
     const stock = Number(document.getElementById('pfStock').value)||0;
     const minStock = Number(document.getElementById('pfMinStock').value)||0;
     const expiryDate = document.getElementById('pfExpiry').value || '';
+    const reorderQty = Number(document.getElementById('pfReorderQty').value)||0;
 
     if(!name){ showToast('اكتب اسم الصنف', 'error'); return; }
     if(!barcode){ barcode = genBarcode(); }
@@ -1036,12 +1151,12 @@ function openProductForm(productId){
       if(purchasePrice !== p.purchasePrice) changes.push({field:'سعر الشراء', oldValue:p.purchasePrice, newValue:purchasePrice});
       if(sellPrice !== p.sellPrice) changes.push({field:'سعر البيع', oldValue:p.sellPrice, newValue:sellPrice});
       if(stock !== p.stock) changes.push({field:'المخزون', oldValue:p.stock, newValue:stock});
-      Object.assign(p, {name, type, unitLabel, barcode, pluCode, purchasePrice, sellPrice, stock, minStock, expiryDate});
+      Object.assign(p, {name, type, unitLabel, barcode, pluCode, purchasePrice, sellPrice, stock, minStock, expiryDate, reorderQty});
       if(changes.length){
         await logActivity(p, changes);
       }
     }else{
-      products.push({id:genId('p'), name, type, unitLabel, barcode, pluCode, purchasePrice, sellPrice, stock, minStock, expiryDate});
+      products.push({id:genId('p'), name, type, unitLabel, barcode, pluCode, purchasePrice, sellPrice, stock, minStock, expiryDate, reorderQty});
     }
     await saveProducts();
     closeModal();
@@ -1178,12 +1293,240 @@ function printLabels(specs){
 }
 
 /* ============================================================
+   RECEIVING TAB (استلام بضاعة)
+   ============================================================ */
+let receiveRows = []; // temp state while the receive modal is open: [{rowId,productId,qty,unitCost}]
+
+function renderReceivingTab(){
+  document.getElementById('receiptsCount').textContent = `${receipts.length} عملية استلام`;
+  const sorted = receipts.slice().sort((a,b)=> new Date(b.date)-new Date(a.date));
+  document.getElementById('receiptsTable').style.display = receipts.length===0 ? 'none' : 'table';
+  document.getElementById('receiptsEmptyState').style.display = receipts.length===0 ? 'block' : 'none';
+  document.getElementById('receiptsTbody').innerHTML = sorted.map(r=>{
+    const d = new Date(r.date);
+    return `<tr data-id="${r.id}">
+      <td>${d.toLocaleDateString('ar-EG')}<div class="hint">${d.toLocaleTimeString('ar-EG')}</div></td>
+      <td>${escapeHtml(r.supplierName || '—')}</td>
+      <td class="num">${r.items.length}</td>
+      <td class="num">${fmt(r.totalCost)}</td>
+      <td>${escapeHtml(r.receivedByName || '—')}</td>
+      <td>
+        <div class="row" style="gap:5px;flex-wrap:nowrap;">
+          <button class="btn btn-sm btn-outline actViewReceipt" data-id="${r.id}">عرض</button>
+          <button class="btn btn-sm btn-danger actDelReceipt" data-id="${r.id}">حذف</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+document.getElementById('newReceiptBtn').addEventListener('click', openReceiveModal);
+document.getElementById('newReceiptBtnEmpty').addEventListener('click', openReceiveModal);
+
+document.getElementById('receiptsTbody').addEventListener('click', async (e)=>{
+  const viewBtn = e.target.closest('.actViewReceipt');
+  const delBtn = e.target.closest('.actDelReceipt');
+  if(viewBtn) openReceiptDetails(viewBtn.dataset.id);
+  if(delBtn){
+    const r = receipts.find(x=>x.id===delBtn.dataset.id);
+    if(!r) return;
+    if(!confirm('حذف عملية الاستلام دي هيرجع المخزون تاني لقبل ما تتضاف. متأكد؟')) return;
+    r.items.forEach(it=>{
+      const p = products.find(x=>x.id===it.productId);
+      if(p) p.stock = +(p.stock - it.qty).toFixed(3);
+    });
+    receipts = receipts.filter(x=>x.id!==r.id);
+    await saveProducts(); await saveReceipts();
+    renderReceivingTab(); renderInventory(); renderPOSProductGrid();
+    showToast('تم حذف عملية الاستلام وتصحيح المخزون', 'success');
+  }
+});
+
+function openReceiveModal(presetProductId, presetQty){
+  if(products.length===0){
+    showToast('ضيف أصناف في المخزون الأول قبل ما تسجل استلام', 'error');
+    return;
+  }
+  receiveRows = presetProductId
+    ? [{rowId: genId('row'), productId:presetProductId, qty:presetQty||'', unitCost:''}]
+    : [{rowId: genId('row'), productId:'', qty:'', unitCost:''}];
+  const html = `
+    <h2>استلام بضاعة جديدة <button class="modal-close" id="mClose">✕</button></h2>
+    <div class="field-row">
+      <div class="field">
+        <label>اسم المورد (اختياري)</label>
+        <input type="text" id="rcvSupplier" placeholder="مثال: شركة النور للتوزيع">
+      </div>
+      <div class="field">
+        <label>تاريخ التوريد</label>
+        <input type="date" id="rcvDate" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+    </div>
+    <label>الأصناف</label>
+    <div id="rcvRows"></div>
+    <button type="button" class="btn btn-outline btn-sm" id="rcvAddRow" style="margin-top:6px;">+ إضافة صنف</button>
+    <div class="field" style="margin-top:14px;">
+      <label>ملاحظات (اختياري)</label>
+      <input type="text" id="rcvNotes" placeholder="رقم فاتورة المورد مثلاً">
+    </div>
+    <div class="weight-preview">
+      <div class="hint">إجمالي تكلفة التوريدة</div>
+      <div class="big-total num" id="rcvTotal">0.00</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+      <button class="btn btn-primary" id="rcvSave">تأكيد الاستلام</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  document.getElementById('rcvAddRow').addEventListener('click', ()=>{
+    receiveRows.push({rowId: genId('row'), productId:'', qty:'', unitCost:''});
+    renderReceiveRows();
+  });
+  renderReceiveRows();
+
+  document.getElementById('rcvSave').addEventListener('click', async ()=>{
+    const supplierName = document.getElementById('rcvSupplier').value.trim();
+    const dateVal = document.getElementById('rcvDate').value || new Date().toISOString().slice(0,10);
+    const notes = document.getElementById('rcvNotes').value.trim();
+
+    const validRows = receiveRows.filter(r=>r.productId && Number(r.qty)>0);
+    if(validRows.length===0){ showToast('اختار صنف واحد على الأقل وحدد الكمية', 'error'); return; }
+
+    const items = [];
+    validRows.forEach(r=>{
+      const p = products.find(x=>x.id===r.productId);
+      if(!p) return;
+      const qty = Number(r.qty)||0;
+      const unitCost = r.unitCost!=='' ? Number(r.unitCost) : p.purchasePrice;
+      items.push({productId:p.id, name:p.name, qty, unitCost, total:+(qty*unitCost).toFixed(2)});
+    });
+    if(items.length===0){ showToast('في مشكلة في الأصناف المختارة', 'error'); return; }
+
+    // apply stock + cost updates
+    items.forEach(it=>{
+      const p = products.find(x=>x.id===it.productId);
+      if(!p) return;
+      const oldStock = p.stock, oldCost = p.purchasePrice;
+      p.stock = +(p.stock + it.qty).toFixed(3);
+      if(it.unitCost !== oldCost){
+        p.purchasePrice = it.unitCost;
+      }
+      const changes = [];
+      changes.push({field:'المخزون', oldValue:oldStock, newValue:p.stock});
+      if(it.unitCost !== oldCost) changes.push({field:'سعر الشراء', oldValue:oldCost, newValue:it.unitCost});
+      logActivity(p, changes); // fire and forget, awaited below via saveActivityLog inside
+    });
+
+    const totalCost = +items.reduce((s,i)=>s+i.total,0).toFixed(2);
+    const receipt = {
+      id: genId('rcv'),
+      date: new Date(dateVal+'T'+new Date().toTimeString().slice(0,8)).toISOString(),
+      supplierName, notes, items, totalCost,
+      receivedById: currentUser ? currentUser.id : null,
+      receivedByName: currentUser ? currentUser.name : 'غير معروف'
+    };
+    receipts.push(receipt);
+
+    await saveProducts();
+    await saveReceipts();
+    closeModal();
+    renderReceivingTab(); renderInventory(); renderPOSProductGrid();
+    showToast('تم تسجيل الاستلام وتحديث المخزون', 'success');
+  });
+}
+
+function renderReceiveRows(){
+  const wrap = document.getElementById('rcvRows');
+  const usedProducts = products.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  wrap.innerHTML = receiveRows.map(row=>`
+    <div class="field-row rcv-row" data-row="${row.rowId}" style="align-items:flex-end;">
+      <div class="field" style="flex:2;">
+        <label>الصنف</label>
+        <select class="rcvProduct" data-row="${row.rowId}">
+          <option value="">اختار صنف...</option>
+          ${usedProducts.map(p=>`<option value="${p.id}" ${row.productId===p.id?'selected':''}>${escapeHtml(p.name)} (${escapeHtml(p.barcode)})</option>`).join('')}
+        </select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label>الكمية</label>
+        <input type="number" class="rcvQty" data-row="${row.rowId}" min="0" step="0.001" value="${row.qty}">
+      </div>
+      <div class="field" style="flex:1;">
+        <label>تكلفة الوحدة</label>
+        <input type="number" class="rcvCost" data-row="${row.rowId}" min="0" step="0.01" value="${row.unitCost}" placeholder="نفس السعر الحالي">
+      </div>
+      <button type="button" class="btn btn-sm btn-danger rcvRemoveRow" data-row="${row.rowId}" style="margin-bottom:13px;">✕</button>
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('.rcvProduct').forEach(el=>el.addEventListener('change', e=>{
+    const row = receiveRows.find(r=>r.rowId===e.target.dataset.row);
+    row.productId = e.target.value;
+    const p = products.find(x=>x.id===row.productId);
+    if(p && row.unitCost===''){ row.unitCost = p.purchasePrice; renderReceiveRows(); updateRcvTotal(); }
+    updateRcvTotal();
+  }));
+  wrap.querySelectorAll('.rcvQty').forEach(el=>el.addEventListener('input', e=>{
+    receiveRows.find(r=>r.rowId===e.target.dataset.row).qty = e.target.value;
+    updateRcvTotal();
+  }));
+  wrap.querySelectorAll('.rcvCost').forEach(el=>el.addEventListener('input', e=>{
+    receiveRows.find(r=>r.rowId===e.target.dataset.row).unitCost = e.target.value;
+    updateRcvTotal();
+  }));
+  wrap.querySelectorAll('.rcvRemoveRow').forEach(el=>el.addEventListener('click', e=>{
+    if(receiveRows.length<=1) return;
+    receiveRows = receiveRows.filter(r=>r.rowId!==e.target.dataset.row);
+    renderReceiveRows();
+    updateRcvTotal();
+  }));
+  updateRcvTotal();
+}
+function updateRcvTotal(){
+  const totalEl = document.getElementById('rcvTotal');
+  if(!totalEl) return;
+  const total = receiveRows.reduce((s,r)=>{
+    const p = products.find(x=>x.id===r.productId);
+    const cost = r.unitCost!=='' ? Number(r.unitCost) : (p?p.purchasePrice:0);
+    return s + (Number(r.qty)||0)*(cost||0);
+  },0);
+  totalEl.textContent = fmt(total);
+}
+
+function openReceiptDetails(receiptId){
+  const r = receipts.find(x=>x.id===receiptId);
+  if(!r) return;
+  const d = new Date(r.date);
+  const html = `
+    <h2>تفاصيل الاستلام <button class="modal-close" id="mClose">✕</button></h2>
+    <p class="hint">${d.toLocaleDateString('ar-EG')} — ${d.toLocaleTimeString('ar-EG')} | المورد: ${escapeHtml(r.supplierName||'—')} | استلمها: ${escapeHtml(r.receivedByName||'—')}</p>
+    <table>
+      <thead><tr><th>الصنف</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
+      <tbody>
+        ${r.items.map(i=>`<tr><td>${escapeHtml(i.name)}</td><td class="num">${fmt(i.qty)}</td><td class="num">${fmt(i.unitCost)}</td><td class="num">${fmt(i.total)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="cart-total-row"><span>الإجمالي</span><span class="num">${fmt(r.totalCost)}</span></div>
+    ${r.notes ? `<p class="hint">ملاحظات: ${escapeHtml(r.notes)}</p>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إغلاق</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+}
+
+/* ============================================================
    POS TAB
    ============================================================ */
 function renderPOS(){
   renderPOSProductGrid();
   renderCart();
   updateTodayStats();
+  renderShiftBox();
 }
 function renderPOSProductGrid(){
   const q = (document.getElementById('posSearch').value||'').trim().toLowerCase();
@@ -1242,6 +1585,74 @@ function handleScan(rawCode){
   handleProductSelected(p);
 }
 
+/* ============================================================
+   CAMERA BARCODE SCANNING
+   ============================================================ */
+let cameraStream = null;
+let cameraScanLoopId = null;
+
+function stopCameraScan(){
+  if(cameraScanLoopId){ cancelAnimationFrame(cameraScanLoopId); cameraScanLoopId=null; }
+  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
+}
+
+async function openCameraScan(){
+  if(!('BarcodeDetector' in window)){
+    showToast('المتصفح ده مش بيدعم المسح بالكاميرا. استخدم سكانر USB أو اكتب الباركود يدويًا', 'error');
+    return;
+  }
+  const html = `
+    <h2>مسح بالكاميرا 📷 <button class="modal-close" id="mClose">✕</button></h2>
+    <p class="hint" style="margin-bottom:10px;">وجّه الكاميرا على الباركود جوه الإطار</p>
+    <div class="camera-wrap">
+      <video id="cameraVideo" autoplay playsinline muted></video>
+      <div class="camera-frame"></div>
+    </div>
+    <p class="hint" id="cameraStatus" style="margin-top:10px;text-align:center;">جاري فتح الكاميرا...</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+    </div>
+  `;
+  openModal(html);
+  const closeAndStop = ()=>{ stopCameraScan(); closeModal(); };
+  document.getElementById('mClose').addEventListener('click', closeAndStop);
+  document.getElementById('mCancel').addEventListener('click', closeAndStop);
+
+  try{
+    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  }catch(e){
+    document.getElementById('cameraStatus').textContent = 'مقدرش أفتح الكاميرا — تأكد إنك موافق على إذن الكاميرا للموقع';
+    return;
+  }
+  const video = document.getElementById('cameraVideo');
+  if(!video) { stopCameraScan(); return; } // modal closed before camera opened
+  video.srcObject = cameraStream;
+  document.getElementById('cameraStatus').textContent = 'بيدور على باركود...';
+
+  const detector = new BarcodeDetector({formats:['ean_13','ean_8','code_128','upc_a','upc_e']});
+  let scanning = true;
+  async function scanLoop(){
+    if(!scanning) return;
+    const videoEl = document.getElementById('cameraVideo');
+    if(!videoEl){ stopCameraScan(); return; } // modal was closed
+    try{
+      const codes = await detector.detect(videoEl);
+      if(codes.length>0){
+        scanning = false;
+        const value = codes[0].rawValue;
+        stopCameraScan();
+        closeModal();
+        handleScan(value);
+        return;
+      }
+    }catch(e){ /* keep trying */ }
+    cameraScanLoopId = requestAnimationFrame(scanLoop);
+  }
+  cameraScanLoopId = requestAnimationFrame(scanLoop);
+}
+
+document.getElementById('cameraScanBtn').addEventListener('click', openCameraScan);
+
 function handleProductSelected(p){
   if(p.type==='piece'){
     addToCart(p, 1);
@@ -1287,14 +1698,40 @@ function openWeightModal(p){
 
 function addToCart(p, qty){
   if(p.type==='piece'){
-    const existing = cart.find(c=>c.productId===p.id);
-    if(existing){ existing.qty += qty; existing.total = +(existing.qty*existing.price).toFixed(2); }
-    else cart.push({productId:p.id, name:p.name, unitLabel:p.unitLabel, price:p.sellPrice, qty, total:+(p.sellPrice*qty).toFixed(2), type:p.type, purchasePrice:p.purchasePrice});
+    const existing = cart.find(c=>c.productId===p.id && !c.discount);
+    if(existing){ existing.qty += qty; recalcLine(existing); }
+    else cart.push({productId:p.id, name:p.name, unitLabel:p.unitLabel, price:p.sellPrice, qty, total:+(p.sellPrice*qty).toFixed(2), type:p.type, purchasePrice:p.purchasePrice, discount:null});
   }else{
-    cart.push({productId:p.id, name:p.name, unitLabel:p.unitLabel, price:p.sellPrice, qty, total:+(p.sellPrice*qty).toFixed(2), type:p.type, purchasePrice:p.purchasePrice});
+    cart.push({productId:p.id, name:p.name, unitLabel:p.unitLabel, price:p.sellPrice, qty, total:+(p.sellPrice*qty).toFixed(2), type:p.type, purchasePrice:p.purchasePrice, discount:null});
   }
   renderCart();
   showToast(`تمت إضافة ${p.name}`, 'success');
+}
+
+function recalcLine(c){
+  const base = c.qty*c.price;
+  let discAmt = 0;
+  if(c.discount){
+    discAmt = c.discount.type==='percent' ? base*(c.discount.value/100) : c.discount.value;
+    discAmt = Math.max(0, Math.min(base, discAmt));
+  }
+  c.total = +(base-discAmt).toFixed(2);
+}
+
+function computeCartTotals(){
+  const subtotal = cart.reduce((s,c)=> s + c.qty*c.price, 0);
+  const itemDiscounts = cart.reduce((s,c)=>{
+    const base = c.qty*c.price;
+    return s + (base - c.total);
+  }, 0);
+  const afterItemDiscounts = subtotal - itemDiscounts;
+  let invoiceDiscAmt = 0;
+  if(cartDiscount){
+    invoiceDiscAmt = cartDiscount.type==='percent' ? afterItemDiscounts*(cartDiscount.value/100) : cartDiscount.value;
+    invoiceDiscAmt = Math.max(0, Math.min(afterItemDiscounts, invoiceDiscAmt));
+  }
+  const grandTotal = +(afterItemDiscounts - invoiceDiscAmt).toFixed(2);
+  return {subtotal:+subtotal.toFixed(2), itemDiscounts:+itemDiscounts.toFixed(2), invoiceDiscAmt:+invoiceDiscAmt.toFixed(2), totalDiscount:+(itemDiscounts+invoiceDiscAmt).toFixed(2), grandTotal};
 }
 
 function renderCart(){
@@ -1305,9 +1742,10 @@ function renderCart(){
     list.innerHTML = cart.map((c,idx)=>{
       const prod = products.find(p=>p.id===c.productId);
       const stockWarn = prod && c.qty>prod.stock;
+      const hasDisc = !!c.discount;
       return `<div class="cart-row">
         <div>
-          <div class="ci-name">${escapeHtml(c.name)}</div>
+          <div class="ci-name">${escapeHtml(c.name)} ${hasDisc?'<span class="perm-chip" style="color:var(--accent-dark);">خصم</span>':''}</div>
           <div class="ci-sub">${fmt(c.price)} × ${fmtQty(c.qty,c.type)} ${escapeHtml(c.unitLabel)} ${stockWarn?'<span style="color:var(--danger)">⚠️ أكبر من المخزون</span>':''}</div>
         </div>
         <div class="qty-ctrl">
@@ -1318,34 +1756,94 @@ function renderCart(){
           ` : `
             <input type="number" class="cQtyInput" data-idx="${idx}" value="${c.qty}" min="0.001" step="0.001" style="width:70px;">
           `}
+          <button class="btn btn-sm btn-outline cDiscount" data-idx="${idx}" title="خصم على الصنف ده">%</button>
           <button class="btn btn-sm btn-danger cRemove" data-idx="${idx}">✕</button>
         </div>
       </div>`;
     }).join('');
   }
-  const total = cart.reduce((s,c)=>s+c.total,0);
-  document.getElementById('cartTotal').textContent = fmt(total);
+  const t = computeCartTotals();
+  document.getElementById('cartTotal').textContent = fmt(t.grandTotal);
+  const discRow = document.getElementById('invoiceDiscountRow');
+  if(discRow){
+    discRow.innerHTML = cartDiscount
+      ? `<span>خصم الفاتورة (${cartDiscount.type==='percent'?cartDiscount.value+'%':fmt(cartDiscount.value)})</span>
+         <span><span class="num" style="color:var(--danger);">-${fmt(t.invoiceDiscAmt)}</span> <button class="btn btn-sm btn-outline" id="editInvDiscBtn">تعديل</button> <button class="btn btn-sm btn-danger" id="removeInvDiscBtn">✕</button></span>`
+      : `<span class="muted">مفيش خصم على الفاتورة</span><button class="btn btn-sm btn-outline" id="addInvDiscBtn">+ إضافة خصم</button>`;
+    const addBtn = document.getElementById('addInvDiscBtn');
+    const editBtn = document.getElementById('editInvDiscBtn');
+    const rmBtn = document.getElementById('removeInvDiscBtn');
+    if(addBtn) addBtn.addEventListener('click', ()=>openDiscountModal('invoice'));
+    if(editBtn) editBtn.addEventListener('click', ()=>openDiscountModal('invoice'));
+    if(rmBtn) rmBtn.addEventListener('click', ()=>{ cartDiscount=null; renderCart(); });
+  }
+  const subEl = document.getElementById('cartSubtotal');
+  if(subEl) subEl.textContent = fmt(t.subtotal);
+}
+
+function openDiscountModal(target, lineIdx){
+  const current = target==='invoice' ? cartDiscount : (cart[lineIdx].discount);
+  const html = `
+    <h2>${target==='invoice'?'خصم على الفاتورة':'خصم على الصنف'} <button class="modal-close" id="mClose">✕</button></h2>
+    <div class="field">
+      <label>نوع الخصم</label>
+      <select id="discType">
+        <option value="percent" ${(!current||current.type==='percent')?'selected':''}>نسبة %</option>
+        <option value="fixed" ${current&&current.type==='fixed'?'selected':''}>مبلغ ثابت</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>القيمة</label>
+      <input type="number" id="discValue" min="0" step="0.01" value="${current?current.value:''}">
+    </div>
+    <div class="modal-actions">
+      ${current?'<button class="btn btn-danger" id="discRemove">إلغاء الخصم</button>':''}
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+      <button class="btn btn-primary" id="discSave">حفظ</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  const rmBtn = document.getElementById('discRemove');
+  if(rmBtn) rmBtn.addEventListener('click', ()=>{
+    if(target==='invoice') cartDiscount=null; else { cart[lineIdx].discount=null; recalcLine(cart[lineIdx]); }
+    closeModal(); renderCart();
+  });
+  document.getElementById('discSave').addEventListener('click', ()=>{
+    const type = document.getElementById('discType').value;
+    const value = Number(document.getElementById('discValue').value)||0;
+    if(value<=0){ showToast('حدد قيمة خصم أكبر من صفر', 'error'); return; }
+    if(type==='percent' && value>100){ showToast('النسبة متعديش 100%', 'error'); return; }
+    if(target==='invoice'){ cartDiscount = {type, value}; }
+    else{ cart[lineIdx].discount = {type, value}; recalcLine(cart[lineIdx]); }
+    closeModal(); renderCart();
+  });
 }
 
 document.getElementById('cartList').addEventListener('click', (e)=>{
   const minus = e.target.closest('.cQtyMinus');
   const plus = e.target.closest('.cQtyPlus');
   const rm = e.target.closest('.cRemove');
+  const disc = e.target.closest('.cDiscount');
   if(minus){
     const idx = +minus.dataset.idx;
     cart[idx].qty = Math.max(1, cart[idx].qty-1);
-    cart[idx].total = +(cart[idx].qty*cart[idx].price).toFixed(2);
+    recalcLine(cart[idx]);
     renderCart();
   }
   if(plus){
     const idx = +plus.dataset.idx;
     cart[idx].qty += 1;
-    cart[idx].total = +(cart[idx].qty*cart[idx].price).toFixed(2);
+    recalcLine(cart[idx]);
     renderCart();
   }
   if(rm){
     cart.splice(+rm.dataset.idx,1);
     renderCart();
+  }
+  if(disc){
+    openDiscountModal('line', +disc.dataset.idx);
   }
 });
 document.getElementById('cartList').addEventListener('change', (e)=>{
@@ -1355,7 +1853,7 @@ document.getElementById('cartList').addEventListener('change', (e)=>{
   let v = Number(inp.value)||0;
   if(v<=0) v = cart[idx].type==='piece'?1:0.001;
   cart[idx].qty = v;
-  cart[idx].total = +(cart[idx].qty*cart[idx].price).toFixed(2);
+  recalcLine(cart[idx]);
   renderCart();
 });
 
@@ -1370,6 +1868,7 @@ document.getElementById('scanForm').addEventListener('submit', (e)=>{
 document.getElementById('clearCartBtn').addEventListener('click', ()=>{
   if(cart.length && !confirm('تفريغ الفاتورة الحالية؟')) return;
   cart = [];
+  cartDiscount = null;
   renderCart();
 });
 
@@ -1379,13 +1878,16 @@ document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
     const p = products.find(pp=>pp.id===item.productId);
     if(p) p.stock = +(p.stock - item.qty).toFixed(3);
   });
-  const total = +cart.reduce((s,i)=>s+i.total,0).toFixed(2);
+  const t = computeCartTotals();
   const cost = +cart.reduce((s,i)=>s+i.purchasePrice*i.qty,0).toFixed(2);
   const sale = {
     id: genId('s'),
     date: new Date().toISOString(),
-    items: cart.map(({productId,name,unitLabel,price,qty,total,type})=>({productId,name,unitLabel,price,qty,total,type})),
-    total, cost, profit: +(total-cost).toFixed(2),
+    items: cart.map(({productId,name,unitLabel,price,qty,total,type,discount})=>({productId,name,unitLabel,price,qty,total,type,discount:discount||null})),
+    subtotal: t.subtotal,
+    invoiceDiscount: cartDiscount ? {...cartDiscount} : null,
+    totalDiscount: t.totalDiscount,
+    total: t.grandTotal, cost, profit: +(t.grandTotal-cost).toFixed(2),
     cashierId: currentUser ? currentUser.id : null,
     cashierName: currentUser ? currentUser.name : 'غير معروف'
   };
@@ -1394,6 +1896,7 @@ document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
   await saveSales();
   showReceipt(sale);
   cart = [];
+  cartDiscount = null;
   renderCart();
   renderPOSProductGrid();
   updateTodayStats();
@@ -1406,9 +1909,118 @@ function updateTodayStats(){
   document.getElementById('todayCount').textContent = todaySales.length;
 }
 
-function showReceipt(sale){
+/* ============================================================
+   SHIFTS / CASH DRAWER (تقفيل الشيفت)
+   ============================================================ */
+function getActiveShift(){
+  if(!currentUser) return null;
+  return shifts.find(s=>s.userId===currentUser.id && s.status==='open') || null;
+}
+function shiftExpectedCash(shift){
+  const since = new Date(shift.openedAt);
+  const salesDuring = sales.filter(s=>s.cashierId===shift.userId && new Date(s.date)>=since);
+  const returnsDuring = returns.filter(r=>r.userId===shift.userId && new Date(r.date)>=since);
+  const salesTotal = salesDuring.reduce((s,x)=>s+x.total,0);
+  const returnsTotal = returnsDuring.reduce((s,x)=>s+x.totalRefund,0);
+  return {
+    expected: +(shift.openingCash + salesTotal - returnsTotal).toFixed(2),
+    salesTotal: +salesTotal.toFixed(2),
+    returnsTotal: +returnsTotal.toFixed(2),
+    salesCount: salesDuring.length
+  };
+}
+function renderShiftBox(){
+  const box = document.getElementById('shiftBox');
+  if(!box || !currentUser) return;
+  const active = getActiveShift();
+  if(!active){
+    box.innerHTML = `
+      <div class="stat-label">الشيفت</div>
+      <p class="hint" style="margin:6px 0 10px;">مفيش شيفت شغال دلوقتي. ابدأ شيفت جديد بعد ما تعد فلوس الدرج الافتتاحية.</p>
+      <button class="btn btn-primary" style="width:100%;" id="startShiftBtn">▶️ بدء الشيفت</button>
+    `;
+    document.getElementById('startShiftBtn').addEventListener('click', openStartShiftModal);
+  }else{
+    const exp = shiftExpectedCash(active);
+    const opened = new Date(active.openedAt);
+    box.innerHTML = `
+      <div class="stat-label">الشيفت شغال 🟢</div>
+      <p class="hint" style="margin:4px 0 10px;">بدأ الساعة ${opened.toLocaleTimeString('ar-EG')} | مبيعاتك: ${fmt(exp.salesTotal)} (${exp.salesCount} فاتورة)</p>
+      <button class="btn btn-danger" style="width:100%;" id="closeShiftBtn">⏹️ إغلاق الشيفت</button>
+    `;
+    document.getElementById('closeShiftBtn').addEventListener('click', ()=>openCloseShiftModal(active));
+  }
+}
+function openStartShiftModal(){
   const html = `
-    <h2>تم البيع بنجاح ✅ <button class="modal-close" id="mClose">✕</button></h2>
+    <h2>بدء شيفت جديد <button class="modal-close" id="mClose">✕</button></h2>
+    <div class="field">
+      <label>رصيد الدرج الافتتاحي (الفلوس الموجودة في الدرج دلوقتي)</label>
+      <input type="number" id="startCash" min="0" step="0.01" value="0" autofocus>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+      <button class="btn btn-primary" id="startShiftSave">بدء الشيفت</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  document.getElementById('startShiftSave').addEventListener('click', async ()=>{
+    const openingCash = Number(document.getElementById('startCash').value)||0;
+    shifts.push({
+      id: genId('shift'), userId: currentUser.id, userName: currentUser.name,
+      openedAt: new Date().toISOString(), openingCash,
+      closedAt:null, closingCash:null, expectedCash:null, difference:null, status:'open'
+    });
+    await saveShifts();
+    closeModal();
+    renderShiftBox();
+    showToast('الشيفت بدأ، بالتوفيق 💪', 'success');
+  });
+}
+function openCloseShiftModal(shift){
+  const exp = shiftExpectedCash(shift);
+  const html = `
+    <h2>إغلاق الشيفت <button class="modal-close" id="mClose">✕</button></h2>
+    <p class="hint">الرصيد الافتتاحي: ${fmt(shift.openingCash)} | مبيعاتك: ${fmt(exp.salesTotal)} | مرتجعاتك: ${fmt(exp.returnsTotal)}</p>
+    <div class="weight-preview">
+      <div class="hint">الرصيد المتوقع في الدرج</div>
+      <div class="big-total num">${fmt(exp.expected)}</div>
+    </div>
+    <div class="field">
+      <label>الفلوس اللي عددتها فعليًا في الدرج</label>
+      <input type="number" id="closeCash" min="0" step="0.01" autofocus>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+      <button class="btn btn-danger" id="closeShiftSave">تأكيد إغلاق الشيفت</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  document.getElementById('closeShiftSave').addEventListener('click', async ()=>{
+    const counted = document.getElementById('closeCash').value;
+    if(counted===''){ showToast('اكتب الفلوس اللي عددتها', 'error'); return; }
+    const closingCash = Number(counted)||0;
+    const difference = +(closingCash-exp.expected).toFixed(2);
+    shift.closedAt = new Date().toISOString();
+    shift.closingCash = closingCash;
+    shift.expectedCash = exp.expected;
+    shift.difference = difference;
+    shift.status = 'closed';
+    await saveShifts();
+    closeModal();
+    renderShiftBox();
+    const msg = difference===0 ? 'الدرج مظبوط بالظبط 👍' : (difference>0 ? `فيه زيادة ${fmt(Math.abs(difference))} في الدرج` : `فيه عجز ${fmt(Math.abs(difference))} في الدرج`);
+    showToast(msg, difference===0?'success':'error');
+  });
+}
+
+function showReceipt(sale, title){
+  const html = `
+    <h2>${title || 'تم البيع بنجاح ✅'} <button class="modal-close" id="mClose">✕</button></h2>
     <div id="receiptPreview" class="card" style="max-width:320px;margin:0 auto;">
       ${receiptHTML(sale)}
     </div>
@@ -1436,6 +2048,10 @@ function receiptHTML(sale){
       <div class="receipt-line hint"><span>${fmtQty(i.qty,i.type)} ${escapeHtml(i.unitLabel)} × ${fmt(i.price)}</span><span></span></div>
     `).join('')}
     <div class="receipt-hr"></div>
+    ${sale.totalDiscount ? `
+      <div class="receipt-line hint"><span>الإجمالي الفرعي</span><span class="num">${fmt(sale.subtotal)}</span></div>
+      <div class="receipt-line hint"><span>الخصم</span><span class="num">-${fmt(sale.totalDiscount)}</span></div>
+    ` : ''}
     <div class="receipt-line" style="font-weight:800;font-size:15px;"><span>الإجمالي</span><span class="num">${fmt(sale.total)} ${escapeHtml(settings.currency)}</span></div>
     <div class="receipt-head" style="margin-top:10px;"><div class="hint">شكراً لزيارتكم 🙏</div></div>
   `;
@@ -1468,15 +2084,33 @@ function getFilteredSales(){
     return true;
   });
 }
+function getFilteredReturns(){
+  const now = new Date();
+  return returns.filter(r=>{
+    const d = new Date(r.date);
+    if(currentRange==='today') return isToday(r.date);
+    if(currentRange==='week'){ const diff=(now-d)/86400000; return diff<=7; }
+    if(currentRange==='month'){ return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear(); }
+    return true;
+  });
+}
 function renderReports(){
   const list = getFilteredSales();
+  const returnsList = getFilteredReturns();
   const revenue = list.reduce((s,x)=>s+x.total,0);
   const cost = list.reduce((s,x)=>s+x.cost,0);
-  const profit = list.reduce((s,x)=>s+x.profit,0);
+  const returnsAmt = returnsList.reduce((s,r)=>s+r.totalRefund,0);
+  const returnsCost = returnsList.reduce((s,r)=>s+r.totalCost,0);
+  const profit = (list.reduce((s,x)=>s+x.profit,0)) - (returnsAmt-returnsCost);
   document.getElementById('repRevenue').textContent = fmt(revenue);
   document.getElementById('repCost').textContent = fmt(cost);
+  document.getElementById('repReturns').textContent = fmt(returnsAmt);
   document.getElementById('repProfit').textContent = fmt(profit);
   document.getElementById('repCount').textContent = list.length;
+
+  renderInvoicesList(list);
+  renderReturnsList(returnsList);
+  renderShiftsLog();
 
   const agg = {};
   list.forEach(s=>s.items.forEach(i=>{
@@ -1496,7 +2130,8 @@ function renderReports(){
   document.getElementById('lowStockTbody').innerHTML = low.map(p=>`
     <tr><td><strong>${escapeHtml(p.name)}</strong></td>
     <td class="num">${fmtQty(p.stock,p.type)} ${escapeHtml(p.unitLabel)}</td>
-    <td class="muted">حد التنبيه: ${fmtQty(p.minStock,p.type)}</td></tr>
+    <td class="muted">حد التنبيه: ${fmtQty(p.minStock,p.type)}${p.reorderQty?` | مقترح: ${fmtQty(p.reorderQty,p.type)}`:''}</td>
+    <td><button class="btn btn-sm btn-primary actQuickReceive" data-id="${p.id}">📥 استلام</button></td></tr>
   `).join('');
   document.getElementById('lowEmpty').style.display = low.length===0 ? 'block':'none';
 
@@ -1527,6 +2162,193 @@ function renderReports(){
   document.getElementById('cashierEmpty').style.display = cashierRows.length===0 ? 'block':'none';
 
   renderActivityLog();
+}
+
+function renderInvoicesList(list){
+  const q = (document.getElementById('invoiceSearch').value||'').trim().toLowerCase();
+  const sorted = list.slice().sort((a,b)=> new Date(b.date)-new Date(a.date))
+    .filter(s => !q || (s.cashierName||'').toLowerCase().includes(q) || s.id.toLowerCase().includes(q));
+  document.getElementById('invoicesTbody').innerHTML = sorted.slice(0,100).map(s=>{
+    const d = new Date(s.date);
+    return `<tr data-id="${s.id}">
+      <td>${d.toLocaleDateString('ar-EG')}<div class="hint">${d.toLocaleTimeString('ar-EG')}</div></td>
+      <td>${escapeHtml(s.cashierName||'—')}</td>
+      <td class="num">${s.items.length}</td>
+      <td class="num">${fmt(s.total)}</td>
+      <td>
+        <div class="row" style="gap:5px;flex-wrap:nowrap;">
+          <button class="btn btn-sm btn-outline actViewInvoice" data-id="${s.id}">عرض</button>
+          <button class="btn btn-sm btn-primary actPrintInvoice" data-id="${s.id}">🖨️ طباعة</button>
+          <button class="btn btn-sm btn-danger actReturnInvoice" data-id="${s.id}">↩️ مرتجع</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('invoicesEmpty').style.display = sorted.length===0 ? 'block':'none';
+}
+document.getElementById('invoiceSearch').addEventListener('input', ()=>renderInvoicesList(getFilteredSales()));
+document.getElementById('invoicesTbody').addEventListener('click', (e)=>{
+  const viewBtn = e.target.closest('.actViewInvoice');
+  const printBtn = e.target.closest('.actPrintInvoice');
+  const returnBtn = e.target.closest('.actReturnInvoice');
+  const id = (viewBtn||printBtn||returnBtn)?.dataset.id;
+  if(!id) return;
+  const sale = sales.find(s=>s.id===id);
+  if(!sale) return;
+  if(viewBtn) showReceipt(sale, 'تفاصيل الفاتورة 🧾');
+  if(printBtn) printReceipt(sale);
+  if(returnBtn) openReturnModal(sale);
+});
+
+document.getElementById('lowStockTbody').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.actQuickReceive');
+  if(!btn) return;
+  const p = products.find(x=>x.id===btn.dataset.id);
+  if(!p) return;
+  switchTab('receiving');
+  setTimeout(()=> openReceiveModal(p.id, p.reorderQty || ''), 50);
+});
+
+function renderReturnsList(list){
+  const sorted = list.slice().sort((a,b)=> new Date(b.date)-new Date(a.date));
+  document.getElementById('returnsTbody').innerHTML = sorted.map(r=>{
+    const d = new Date(r.date);
+    return `<tr>
+      <td>${d.toLocaleDateString('ar-EG')}<div class="hint">${d.toLocaleTimeString('ar-EG')}</div></td>
+      <td class="muted">#${r.saleId.slice(-6)}</td>
+      <td>${r.items.map(i=>escapeHtml(i.name)+' ×'+fmtQty(i.qty,'piece')).join('، ')}</td>
+      <td class="num" style="color:var(--danger);">-${fmt(r.totalRefund)}</td>
+      <td>${escapeHtml(r.userName||'—')}</td>
+      <td class="hint">${escapeHtml(r.reason||'—')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('returnsEmpty').style.display = sorted.length===0 ? 'block':'none';
+}
+
+function getReturnedQty(saleId, productId){
+  return returns.filter(r=>r.saleId===saleId).reduce((s,r)=>{
+    const it = r.items.find(i=>i.productId===productId);
+    return s + (it ? it.qty : 0);
+  }, 0);
+}
+
+function openReturnModal(sale){
+  const html = `
+    <h2>مرتجع من فاتورة <button class="modal-close" id="mClose">✕</button></h2>
+    <p class="hint">حدد الكمية اللي هترجع من كل صنف (سيبها صفر لو مش هترجعه)</p>
+    <div id="returnRows">
+      ${sale.items.map((it,idx)=>{
+        const already = getReturnedQty(sale.id, it.productId);
+        const maxQty = +(it.qty-already).toFixed(3);
+        return `<div class="field-row" style="align-items:center;">
+          <div class="field" style="flex:2;margin-bottom:8px;">
+            ${escapeHtml(it.name)}
+            <div class="hint">اتباع منها ${fmtQty(it.qty,it.type)} ${escapeHtml(it.unitLabel)}${already>0?` (اترجع منها ${fmtQty(already,it.type)} قبل كده)`:''}</div>
+          </div>
+          <div class="field" style="flex:1;margin-bottom:8px;">
+            <input type="number" class="returnQtyInput" data-idx="${idx}" min="0" max="${maxQty}" step="${it.type==='weight'?'0.001':'1'}" value="0" ${maxQty<=0?'disabled':''}>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="field">
+      <label>سبب المرتجع (اختياري)</label>
+      <input type="text" id="returnReason" placeholder="مثال: منتج تالف">
+    </div>
+    <div class="weight-preview">
+      <div class="hint">إجمالي المبلغ المسترجع</div>
+      <div class="big-total num" id="returnTotal">0.00</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">إلغاء</button>
+      <button class="btn btn-danger" id="returnSave">تأكيد المرتجع</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+
+  function computeReturnTotal(){
+    let total = 0;
+    document.querySelectorAll('.returnQtyInput').forEach(inp=>{
+      const idx = +inp.dataset.idx;
+      const it = sale.items[idx];
+      const unitPrice = it.qty>0 ? it.total/it.qty : 0;
+      total += (Number(inp.value)||0)*unitPrice;
+    });
+    document.getElementById('returnTotal').textContent = fmt(total);
+  }
+  document.querySelectorAll('.returnQtyInput').forEach(inp=>inp.addEventListener('input', computeReturnTotal));
+  computeReturnTotal();
+
+  document.getElementById('returnSave').addEventListener('click', async ()=>{
+    const items = [];
+    document.querySelectorAll('.returnQtyInput').forEach(inp=>{
+      const idx = +inp.dataset.idx;
+      const qty = Number(inp.value)||0;
+      if(qty<=0) return;
+      const it = sale.items[idx];
+      const unitPrice = it.qty>0 ? it.total/it.qty : 0;
+      const p = products.find(x=>x.id===it.productId);
+      items.push({
+        productId: it.productId, name: it.name, qty, unitLabel: it.unitLabel,
+        price: +unitPrice.toFixed(2), total: +(qty*unitPrice).toFixed(2),
+        cost: +(qty*(p?p.purchasePrice:0)).toFixed(2)
+      });
+    });
+    if(items.length===0){ showToast('حدد كمية مرتجعة لصنف واحد على الأقل', 'error'); return; }
+
+    items.forEach(it=>{
+      const p = products.find(x=>x.id===it.productId);
+      if(p) p.stock = +(p.stock + it.qty).toFixed(3);
+    });
+
+    const ret = {
+      id: genId('ret'),
+      date: new Date().toISOString(),
+      saleId: sale.id,
+      items,
+      totalRefund: +items.reduce((s,i)=>s+i.total,0).toFixed(2),
+      totalCost: +items.reduce((s,i)=>s+i.cost,0).toFixed(2),
+      userId: currentUser ? currentUser.id : null,
+      userName: currentUser ? currentUser.name : 'غير معروف',
+      reason: document.getElementById('returnReason').value.trim()
+    };
+    returns.push(ret);
+    await saveProducts();
+    await saveReturns();
+    closeModal();
+    renderReports();
+    renderInventory(); renderPOSProductGrid();
+    showToast('تم تسجيل المرتجع وتحديث المخزون', 'success');
+  });
+}
+
+function renderShiftsLog(){
+  const card = document.getElementById('shiftsLogCard');
+  const canSee = currentUser && (currentUser.permissions.settings || currentUser.permissions.users);
+  card.style.display = canSee ? 'block' : 'none';
+  if(!canSee) return;
+  const closed = shifts.filter(s=>s.status==='closed').filter(s=>{
+    const d = new Date(s.closedAt), now = new Date();
+    if(currentRange==='today') return isToday(s.closedAt);
+    if(currentRange==='week'){ return (now-d)/86400000<=7; }
+    if(currentRange==='month'){ return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear(); }
+    return true;
+  }).sort((a,b)=> new Date(b.closedAt)-new Date(a.closedAt));
+  document.getElementById('shiftsTbody').innerHTML = closed.map(s=>{
+    const diffColor = s.difference===0 ? 'var(--good)' : (s.difference<0 ? 'var(--danger)' : 'var(--accent-dark)');
+    return `<tr>
+      <td><strong>${escapeHtml(s.userName)}</strong></td>
+      <td class="hint">${new Date(s.openedAt).toLocaleString('ar-EG')}</td>
+      <td class="hint">${new Date(s.closedAt).toLocaleString('ar-EG')}</td>
+      <td class="num">${fmt(s.openingCash)}</td>
+      <td class="num">${fmt(s.expectedCash)}</td>
+      <td class="num">${fmt(s.closingCash)}</td>
+      <td class="num" style="color:${diffColor};font-weight:700;">${s.difference>0?'+':''}${fmt(s.difference)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('shiftsEmpty').style.display = closed.length===0 ? 'block':'none';
 }
 
 function renderActivityLog(){
@@ -1668,7 +2490,7 @@ document.getElementById('usersTbody').addEventListener('click', async (e)=>{
 function openUserForm(userId){
   const u = userId ? users.find(x=>x.id===userId) : null;
   const isEdit = !!u;
-  const perms = u ? u.permissions : {pos:true, inventory:false, reports:false, settings:false, users:false};
+  const perms = u ? u.permissions : {pos:true, inventory:false, receiving:false, reports:false, settings:false, users:false};
   const html = `
     <h2>${isEdit?'تعديل مستخدم':'إضافة مستخدم جديد'} <button class="modal-close" id="mClose">✕</button></h2>
     <div class="field">
@@ -1715,10 +2537,10 @@ function openUserForm(userId){
     document.querySelectorAll('.permChk').forEach(c=>{ c.checked = !!vals[c.dataset.key]; });
   }
   document.getElementById('presetAdmin').addEventListener('click', ()=>{
-    setAllPerms({pos:true,inventory:true,reports:true,settings:true,users:true});
+    setAllPerms({pos:true,inventory:true,receiving:true,reports:true,settings:true,users:true});
   });
   document.getElementById('presetCashier').addEventListener('click', ()=>{
-    setAllPerms({pos:true,inventory:false,reports:false,settings:false,users:false});
+    setAllPerms({pos:true,inventory:false,receiving:false,reports:false,settings:false,users:false});
   });
 
   document.getElementById('ufSave').addEventListener('click', async ()=>{
@@ -1728,7 +2550,7 @@ function openUserForm(userId){
     const active = document.getElementById('ufActive').checked;
     const newPerms = {};
     document.querySelectorAll('.permChk').forEach(c=>{ newPerms[c.dataset.key] = c.checked; });
-    const role = newPerms.users && newPerms.settings && newPerms.inventory && newPerms.reports && newPerms.pos ? 'admin' : 'cashier';
+    const role = newPerms.users && newPerms.settings && newPerms.inventory && newPerms.receiving && newPerms.reports && newPerms.pos ? 'admin' : 'cashier';
 
     if(!name){ showToast('اكتب اسم المستخدم', 'error'); return; }
     if(!isEdit && !/^\d{4,6}$/.test(pinInput)){ showToast('رمز الدخول لازم يكون من 4 إلى 6 أرقام', 'error'); return; }
