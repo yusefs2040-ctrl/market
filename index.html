@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>نظام إدارة السوبر ماركت</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230F6E5C'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle'%3E%F0%9F%9B%92%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -585,8 +586,13 @@
             ⬆️ استيراد نسخة
             <input type="file" id="importFile" accept="application/json" style="display:none;">
           </label>
-          <button class="btn btn-danger" id="resetBtn">🗑️ مسح كل البيانات</button>
         </div>
+      </div>
+
+      <div class="card" style="max-width:560px;border:1px solid var(--danger);" id="dangerZoneCard">
+        <h2 style="color:var(--danger);">⚠️ منطقة الخطر — إعادة ضبط المصنع</h2>
+        <p class="hint" style="margin-bottom:12px;">بيمسح كل حاجة نهائيًا (المنتجات، الفواتير، المخزون، المستخدمين، كل حاجة) ويرجع البرنامج فاضي زي أول تشغيل. اعمل نسخة احتياطية الأول لو مش متأكد. الخاصية دي للمدير بس.</p>
+        <button class="btn btn-danger" id="resetBtn">🗑️ إعادة ضبط السيستم بالكامل</button>
       </div>
     </section>
 
@@ -1872,14 +1878,73 @@ document.getElementById('clearCartBtn').addEventListener('click', ()=>{
   renderCart();
 });
 
-document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
+document.getElementById('checkoutBtn').addEventListener('click', ()=>{
   if(cart.length===0){ showToast('الفاتورة فارغة', 'error'); return; }
+  openPaymentModal();
+});
+
+function openPaymentModal(){
+  const t = computeCartTotals();
+  const suggestions = [t.grandTotal, ...[50,100,200,500].filter(v=>v>t.grandTotal)].slice(0,4);
+  const html = `
+    <h2>اعتماد الفاتورة والدفع 💵 <button class="modal-close" id="mClose">✕</button></h2>
+    <div class="weight-preview">
+      <div class="hint">إجمالي الفاتورة المطلوب</div>
+      <div class="big-total num">${fmt(t.grandTotal)} ${escapeHtml(settings.currency)}</div>
+    </div>
+    <div class="field">
+      <label>العميل دفع كام؟</label>
+      <input type="number" id="paidAmount" min="0" step="0.01" autofocus placeholder="0.00">
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:12px;">
+      ${suggestions.map(v=>`<button type="button" class="btn btn-outline btn-sm quickPayBtn" data-v="${v}">${fmt(v)}</button>`).join('')}
+    </div>
+    <div class="weight-preview" id="changeBox" style="display:none;">
+      <div class="hint">الباقي للعميل</div>
+      <div class="big-total num" id="changeAmount" style="color:var(--good);">0.00</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="mCancel">رجوع للفاتورة</button>
+      <button class="btn btn-primary" id="confirmPayBtn">✅ اعتماد وطباعة</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('mClose').addEventListener('click', closeModal);
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  const paidInput = document.getElementById('paidAmount');
+  const changeBox = document.getElementById('changeBox');
+  const changeAmount = document.getElementById('changeAmount');
+
+  function updateChange(){
+    const paid = Number(paidInput.value)||0;
+    if(paid<=0){ changeBox.style.display='none'; return; }
+    const change = +(paid-t.grandTotal).toFixed(2);
+    changeBox.style.display = 'block';
+    changeAmount.textContent = fmt(Math.abs(change));
+    changeAmount.style.color = change<0 ? 'var(--danger)' : 'var(--good)';
+    changeBox.querySelector('.hint').textContent = change<0 ? 'المبلغ لسه ناقص' : 'الباقي للعميل';
+  }
+  paidInput.addEventListener('input', updateChange);
+  document.querySelectorAll('.quickPayBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ paidInput.value = btn.dataset.v; updateChange(); });
+  });
+
+  document.getElementById('confirmPayBtn').addEventListener('click', async ()=>{
+    const paid = Number(paidInput.value)||0;
+    if(paid<=0){ showToast('اكتب المبلغ اللي دفعه العميل', 'error'); return; }
+    if(paid < t.grandTotal){ showToast('المبلغ المدفوع أقل من إجمالي الفاتورة', 'error'); return; }
+    await finalizeCheckout(paid);
+  });
+}
+
+async function finalizeCheckout(amountPaid){
+  const t = computeCartTotals();
   cart.forEach(item=>{
     const p = products.find(pp=>pp.id===item.productId);
     if(p) p.stock = +(p.stock - item.qty).toFixed(3);
   });
-  const t = computeCartTotals();
   const cost = +cart.reduce((s,i)=>s+i.purchasePrice*i.qty,0).toFixed(2);
+  const changeDue = +(amountPaid-t.grandTotal).toFixed(2);
   const sale = {
     id: genId('s'),
     date: new Date().toISOString(),
@@ -1888,20 +1953,22 @@ document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
     invoiceDiscount: cartDiscount ? {...cartDiscount} : null,
     totalDiscount: t.totalDiscount,
     total: t.grandTotal, cost, profit: +(t.grandTotal-cost).toFixed(2),
+    amountPaid, changeDue,
     cashierId: currentUser ? currentUser.id : null,
     cashierName: currentUser ? currentUser.name : 'غير معروف'
   };
   sales.push(sale);
   await saveProducts();
   await saveSales();
+  closeModal();
   showReceipt(sale);
   cart = [];
   cartDiscount = null;
   renderCart();
   renderPOSProductGrid();
   updateTodayStats();
-  showToast('تم إتمام البيع بنجاح', 'success');
-});
+  showToast('تم اعتماد الفاتورة بنجاح', 'success');
+}
 
 function updateTodayStats(){
   const todaySales = sales.filter(s=>isToday(s.date));
@@ -2053,6 +2120,11 @@ function receiptHTML(sale){
       <div class="receipt-line hint"><span>الخصم</span><span class="num">-${fmt(sale.totalDiscount)}</span></div>
     ` : ''}
     <div class="receipt-line" style="font-weight:800;font-size:15px;"><span>الإجمالي</span><span class="num">${fmt(sale.total)} ${escapeHtml(settings.currency)}</span></div>
+    ${sale.amountPaid!=null ? `
+      <div class="receipt-hr"></div>
+      <div class="receipt-line"><span>المدفوع</span><span class="num">${fmt(sale.amountPaid)}</span></div>
+      <div class="receipt-line" style="font-weight:800;"><span>الباقي للعميل</span><span class="num">${fmt(sale.changeDue)}</span></div>
+    ` : ''}
     <div class="receipt-head" style="margin-top:10px;"><div class="hint">شكراً لزيارتكم 🙏</div></div>
   `;
 }
@@ -2381,6 +2453,7 @@ function renderSettingsForm(){
   document.getElementById('setUseScale').checked = settings.useScaleBarcode;
   document.getElementById('setScalePrefix').value = settings.scalePrefix;
   document.getElementById('shopNameDisplay').textContent = settings.shopName;
+  document.getElementById('dangerZoneCard').style.display = (currentUser && currentUser.permissions.users) ? 'block' : 'none';
 }
 document.getElementById('saveGeneralSettingsBtn').addEventListener('click', async ()=>{
   settings.shopName = document.getElementById('setShopName').value.trim() || 'سوبر ماركت';
@@ -2388,6 +2461,7 @@ document.getElementById('saveGeneralSettingsBtn').addEventListener('click', asyn
   settings.lowStock = Number(document.getElementById('setLowStock').value)||0;
   await saveSettings();
   document.getElementById('shopNameDisplay').textContent = settings.shopName;
+  document.title = `🛒 ${settings.shopName}`;
   renderPOSProductGrid();
   showToast('تم حفظ الإعدادات', 'success');
 });
@@ -2434,12 +2508,46 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
   e.target.value = '';
 });
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
-  if(!confirm('هيتم حذف كل المنتجات والمبيعات نهائيًا. متأكد؟')) return;
-  if(!confirm('تأكيد أخير: مفيش رجوع بعد كده. تمسح كل حاجة؟')) return;
-  products = []; sales = [];
-  await saveProducts(); await saveSales();
-  renderInventory(); renderPOS(); renderReports();
-  showToast('تم مسح البيانات', 'success');
+  if(!confirm('هيتم مسح كل حاجة نهائيًا: المنتجات، الفواتير، الاستلام، المرتجعات، الشيفتات، وكل المستخدمين (هيترجع السيستم لحساب مدير واحد بس من جديد). متأكد؟')) return;
+  if(!confirm('تأكيد أخير: البرنامج هيرجع فاضي زي أول يوم، ومفيش رجوع في القرار ده. تمسح كل حاجة فعلاً؟')) return;
+
+  products = []; sales = []; receipts = []; returns = []; shifts = []; activityLog = [];
+  cart = []; cartDiscount = null;
+
+  const newPin = String(Math.floor(1000 + Math.random()*9000));
+  users = [{
+    id: genId('u'), name:'المدير', username:'admin', pin:newPin, role:'admin',
+    permissions:{pos:true, inventory:true, receiving:true, reports:true, settings:true, users:true}, active:true
+  }];
+
+  await Promise.all([
+    saveProducts(), saveSales(), saveReceipts(), saveReturns(),
+    saveShifts(), saveActivityLog(), saveUsers()
+  ]);
+
+  currentUser = null;
+
+  const html = `
+    <h2>✅ تم إعادة ضبط السيستم بالكامل</h2>
+    <p class="hint">البرنامج دلوقتي فاضي تمامًا زي أول مرة. اتعمل حساب مدير جديد بالبيانات دي — احفظها في مكان آمن دلوقتي:</p>
+    <div class="weight-preview">
+      <div class="hint">اسم الدخول</div>
+      <div class="big-total">admin</div>
+    </div>
+    <div class="weight-preview">
+      <div class="hint">رمز الدخول (PIN)</div>
+      <div class="big-total num">${newPin}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" style="width:100%;" id="resetAckBtn">تمام، هدخل بيه دلوقتي</button>
+    </div>
+  `;
+  openModal(html);
+  document.getElementById('resetAckBtn').addEventListener('click', ()=>{
+    closeModal();
+    document.getElementById('loginScreen').classList.remove('hidden');
+    renderLoginScreen();
+  });
 });
 
 /* ============================================================
@@ -2587,6 +2695,7 @@ function openUserForm(userId){
     return;
   }
   await loadAll();
+  document.title = settings.shopName ? `🛒 ${settings.shopName}` : 'نظام إدارة السوبر ماركت';
   renderPOS();
   renderInventory();
   renderReports();
